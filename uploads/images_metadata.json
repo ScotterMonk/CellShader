@@ -1,0 +1,44 @@
+[
+  {
+    "id": 1,
+    "filename": "20250820_143830_00-intro-03a-expanded-enlarged.png",
+    "original_name": "00-intro-03a-expanded-enlarged.png",
+    "file_size": 1915065,
+    "original_width": 1920,
+    "original_height": 1080,
+    "target_width": 1920,
+    "target_height": 1080,
+    "keep_ratio": true,
+    "aspect_ratio": 1.7777777777777777,
+    "upload_time": "2025-08-20T14:38:30.873541",
+    "file_path": "uploads/20250820_143830_00-intro-03a-expanded-enlarged.png"
+  },
+  {
+    "id": 2,
+    "filename": "20250820_143835_00-intro-00.png",
+    "original_name": "00-intro-00.png",
+    "file_size": 2646627,
+    "original_width": 1920,
+    "original_height": 1080,
+    "target_width": 1920,
+    "target_height": 1080,
+    "keep_ratio": true,
+    "aspect_ratio": 1.7777777777777777,
+    "upload_time": "2025-08-20T14:38:35.207190",
+    "file_path": "uploads/20250820_143835_00-intro-00.png"
+  },
+  {
+    "id": 3,
+    "filename": "20250820_143839_00-intro-01b.png",
+    "original_name": "00-intro-01b.png",
+    "file_size": 2144652,
+    "original_width": 1920,
+    "original_height": 1080,
+    "target_width": 1920,
+    "target_height": 1080,
+    "keep_ratio": true,
+    "aspect_ratio": 1.7777777777777777,
+    "upload_time": "2025-08-20T14:38:39.236702",
+    "file_path": "uploads/20250820_143839_00-intro-01b.png"
+  }
+]

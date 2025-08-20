@@ -1,0 +1,723 @@
+// CellShader Application JavaScript
+
+// Global variables
+let selectedFile = null; // Keep for backward compatibility
+let selectedImages = []; // Array to store multiple selected images
+let currentProcessedPath = null;
+let originalAspectRatio = null;
+let originalWidth = null;
+let originalHeight = null;
+let imageIdCounter = 0; // Counter for unique image IDs
+
+// Initialize application when DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    initializeSliders();
+    initializeFileUpload();
+    initializeResolutionControls();
+    loadExistingImages();
+});
+
+// Initialize slider controls with real-time updates
+function initializeSliders() {
+    const edgeSlider = document.getElementById('edgeThickness');
+    const colorSlider = document.getElementById('colorLevels');
+    const smoothingSlider = document.getElementById('smoothingAmount');
+
+    edgeSlider.addEventListener('input', function() {
+        document.getElementById('edgeValue').textContent = this.value;
+    });
+
+    colorSlider.addEventListener('input', function() {
+        document.getElementById('colorValue').textContent = this.value;
+    });
+
+    smoothingSlider.addEventListener('input', function() {
+        document.getElementById('smoothingValue').textContent = this.value;
+    });
+}
+
+// Initialize resolution controls with event handlers
+function initializeResolutionControls() {
+    const targetWidthInput = document.getElementById('targetWidth');
+    const targetHeightInput = document.getElementById('targetHeight');
+    const keepRatioCheckbox = document.getElementById('keepRatio');
+
+    // Width input handler - auto-updates height when keep ratio is on
+    targetWidthInput.addEventListener('input', function() {
+        if (keepRatioCheckbox.checked && originalAspectRatio && this.value) {
+            const width = parseInt(this.value);
+            if (width > 0) {
+                const height = Math.round(width / originalAspectRatio);
+                targetHeightInput.value = height;
+                validateResolution(width, height);
+            }
+        } else if (this.value) {
+            validateResolution(parseInt(this.value), targetHeightInput.value ? parseInt(targetHeightInput.value) : null);
+        }
+    });
+
+    // Height input handler - validate but don't auto-update width
+    targetHeightInput.addEventListener('input', function() {
+        if (this.value) {
+            validateResolution(targetWidthInput.value ? parseInt(targetWidthInput.value) : null, parseInt(this.value));
+        }
+    });
+
+    // Keep ratio checkbox handler
+    keepRatioCheckbox.addEventListener('change', function() {
+        if (this.checked && originalAspectRatio && targetWidthInput.value) {
+            // Recalculate height based on current width
+            const width = parseInt(targetWidthInput.value);
+            const height = Math.round(width / originalAspectRatio);
+            targetHeightInput.value = height;
+            validateResolution(width, height);
+        }
+        
+        // Disable/enable height input based on keep ratio setting
+        targetHeightInput.disabled = this.checked;
+    });
+
+    // Initially disable height input if keep ratio is checked
+    targetHeightInput.disabled = keepRatioCheckbox.checked;
+}
+
+// Validate resolution inputs and show status
+function validateResolution(width, height) {
+    const maxWidth = 3840;
+    const maxHeight = 2160;
+    
+    if (width && (width < 1 || width > maxWidth)) {
+        showStatus(`Width must be between 1 and ${maxWidth} pixels.`, 'error');
+        return false;
+    }
+    
+    if (height && (height < 1 || height > maxHeight)) {
+        showStatus(`Height must be between 1 and ${maxHeight} pixels.`, 'error');
+        return false;
+    }
+    
+    return true;
+}
+
+// Reset resolution controls
+function resetResolutionControls() {
+    document.getElementById('targetWidth').value = '';
+    document.getElementById('targetHeight').value = '';
+    document.getElementById('keepRatio').checked = true;
+    document.getElementById('targetHeight').disabled = true;
+    document.getElementById('originalDims').textContent = 'Original: --';
+    originalAspectRatio = null;
+    originalWidth = null;
+    originalHeight = null;
+}
+
+// Initialize file upload functionality with drag and drop
+function initializeFileUpload() {
+    const uploadSection = document.getElementById('uploadSection');
+    const fileInput = document.getElementById('imageUpload');
+
+    // File input change handler - process all selected files
+    fileInput.addEventListener('change', function(e) {
+        const files = Array.from(e.target.files);
+        files.forEach(file => {
+            if (file) {
+                handleFileSelection(file);
+            }
+        });
+    });
+
+    // Drag and drop handlers
+    uploadSection.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        uploadSection.classList.add('dragover');
+    });
+
+    uploadSection.addEventListener('dragleave', function(e) {
+        e.preventDefault();
+        uploadSection.classList.remove('dragover');
+    });
+
+    uploadSection.addEventListener('drop', function(e) {
+        e.preventDefault();
+        uploadSection.classList.remove('dragover');
+        
+        const files = Array.from(e.dataTransfer.files);
+        let validFilesCount = 0;
+        
+        files.forEach(file => {
+            if (file.type.startsWith('image/')) {
+                handleFileSelection(file);
+                validFilesCount++;
+            }
+        });
+        
+        if (validFilesCount === 0 && files.length > 0) {
+            showStatus('Please select valid image files.', 'error');
+        }
+    });
+}
+
+// Handle file selection and preview
+function handleFileSelection(file) {
+    // Validate file type
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/bmp', 'image/tiff'];
+    if (!allowedTypes.includes(file.type)) {
+        showStatus('Invalid file type. Please select PNG, JPG, JPEG, GIF, BMP, or TIFF files.', 'error');
+        return;
+    }
+
+    // Validate file size (16MB limit)
+    const maxSize = 16 * 1024 * 1024; // 16MB
+    if (file.size > maxSize) {
+        showStatus('File too large. Maximum size is 16MB.', 'error');
+        return;
+    }
+
+    // Check if image is already selected
+    const existingImage = selectedImages.find(img => img.name === file.name && img.size === file.size);
+    if (existingImage) {
+        showStatus(`Image "${file.name}" is already selected.`, 'warning');
+        return;
+    }
+
+    // Keep backward compatibility
+    selectedFile = file;
+    
+    // Add image to selected images array
+    addImageToTable(file);
+    
+    showStatus(`Added: ${file.name} (${formatFileSize(file.size)})`, 'success');
+}
+
+// Load existing images from server on page load
+async function loadExistingImages() {
+    try {
+        const response = await fetch('/api/images');
+        const result = await response.json();
+        
+        if (result.success && result.images.length > 0) {
+            console.log(`Loading ${result.images.length} existing images`);
+            
+            for (const imageData of result.images) {
+                await loadServerImage(imageData);
+            }
+            
+            // Show images section if we loaded any images
+            if (selectedImages.length > 0) {
+                showImagesSection();
+                updateProcessButton();
+                selectedFile = selectedImages[0].file; // Set for backward compatibility
+            }
+        }
+    } catch (error) {
+        console.error('Error loading existing images:', error);
+    }
+}
+
+// Load a single image from server data
+async function loadServerImage(serverImageData) {
+    try {
+        // Create a simplified image data object for the table
+        const imageData = {
+            id: serverImageData.id,
+            file: null, // We don't have the actual file object
+            name: serverImageData.original_name,
+            size: serverImageData.file_size,
+            originalWidth: serverImageData.original_width,
+            originalHeight: serverImageData.original_height,
+            targetWidth: serverImageData.target_width,
+            targetHeight: serverImageData.target_height,
+            keepRatio: serverImageData.keep_ratio,
+            aspectRatio: serverImageData.aspect_ratio,
+            preview: `/uploads/${serverImageData.filename}`,
+            serverData: serverImageData // Keep reference to server data
+        };
+        
+        // Add to selected images array
+        selectedImages.push(imageData);
+        
+        // Create table row
+        createImageTableRow(imageData);
+        
+        // Update counter to avoid ID conflicts
+        imageIdCounter = Math.max(imageIdCounter, serverImageData.id);
+        
+    } catch (error) {
+        console.error('Error loading server image:', error);
+    }
+}
+
+// Add image to the table and selectedImages array
+function addImageToTable(file) {
+    const imageId = ++imageIdCounter;
+    
+    // Create image object
+    const imageData = {
+        id: imageId,
+        file: file,
+        name: file.name,
+        size: file.size,
+        originalWidth: null,
+        originalHeight: null,
+        targetWidth: null,
+        targetHeight: null,
+        keepRatio: true,
+        aspectRatio: null,
+        preview: null
+    };
+    
+    // Read image dimensions and create preview
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const img = new Image();
+        img.onload = function() {
+            // Update image data with dimensions
+            imageData.originalWidth = this.naturalWidth;
+            imageData.originalHeight = this.naturalHeight;
+            imageData.targetWidth = this.naturalWidth;
+            imageData.targetHeight = this.naturalHeight;
+            imageData.aspectRatio = this.naturalWidth / this.naturalHeight;
+            imageData.preview = e.target.result;
+            
+            // Add to selected images array
+            selectedImages.push(imageData);
+            
+            // Create table row
+            createImageTableRow(imageData);
+            
+            // Show the images section and enable process button
+            showImagesSection();
+            updateProcessButton();
+        };
+        img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+}
+
+// Create a table row for the image
+function createImageTableRow(imageData) {
+    const tableBody = document.getElementById('imageTableBody');
+    const row = document.createElement('tr');
+    row.id = `image-row-${imageData.id}`;
+    
+    row.innerHTML = `
+        <td>
+            <img src="${imageData.preview}" alt="${imageData.name}" class="image-preview">
+        </td>
+        <td>
+            <div class="image-name" title="${imageData.name}">${imageData.name}</div>
+            <div class="text-muted" style="font-size: 0.8em;">${formatFileSize(imageData.size)}</div>
+        </td>
+        <td>
+            <input type="number" class="dimension-input" id="width-${imageData.id}"
+                   value="${imageData.targetWidth}" min="1" max="3840"
+                   onchange="updateImageWidth(${imageData.id}, this.value)">
+            <div class="text-muted" style="font-size: 0.8em;">/${imageData.originalWidth}</div>
+        </td>
+        <td>
+            <input type="number" class="dimension-input" id="height-${imageData.id}"
+                   value="${imageData.targetHeight}" min="1" max="2160"
+                   onchange="updateImageHeight(${imageData.id}, this.value)"
+                   ${imageData.keepRatio ? 'disabled' : ''}>
+            <div class="text-muted" style="font-size: 0.8em;">/${imageData.originalHeight}</div>
+        </td>
+        <td>
+            <input type="checkbox" class="keep-ratio-checkbox" id="ratio-${imageData.id}"
+                   ${imageData.keepRatio ? 'checked' : ''}
+                   onchange="toggleKeepRatio(${imageData.id}, this.checked)">
+        </td>
+        <td>
+            <button class="remove-btn" onclick="removeImage(${imageData.id})"
+                    title="Remove image">✕</button>
+        </td>
+    `;
+    
+    tableBody.appendChild(row);
+}
+
+// Show the images section
+function showImagesSection() {
+    document.getElementById('selectedImagesSection').classList.remove('hidden');
+}
+
+// Hide the images section
+function hideImagesSection() {
+    document.getElementById('selectedImagesSection').classList.add('hidden');
+}
+
+// Update process button state
+function updateProcessButton() {
+    const processBtn = document.getElementById('processBtn');
+    processBtn.disabled = selectedImages.length === 0;
+}
+
+// Update image width and recalculate height if keep ratio is enabled
+async function updateImageWidth(imageId, width) {
+    const imageData = selectedImages.find(img => img.id === imageId);
+    if (!imageData) return;
+    
+    const newWidth = parseInt(width);
+    if (isNaN(newWidth) || newWidth < 1) return;
+    
+    imageData.targetWidth = newWidth;
+    
+    if (imageData.keepRatio) {
+        const newHeight = Math.round(newWidth / imageData.aspectRatio);
+        imageData.targetHeight = newHeight;
+        document.getElementById(`height-${imageId}`).value = newHeight;
+    }
+    
+    // Sync with server if this is a server image
+    if (imageData.serverData) {
+        await syncImageWithServer(imageId, {
+            target_width: imageData.targetWidth,
+            target_height: imageData.targetHeight,
+            keep_ratio: imageData.keepRatio
+        });
+    }
+}
+
+// Update image height
+async function updateImageHeight(imageId, height) {
+    const imageData = selectedImages.find(img => img.id === imageId);
+    if (!imageData) return;
+    
+    const newHeight = parseInt(height);
+    if (isNaN(newHeight) || newHeight < 1) return;
+    
+    imageData.targetHeight = newHeight;
+    
+    // Sync with server if this is a server image
+    if (imageData.serverData) {
+        await syncImageWithServer(imageId, {
+            target_width: imageData.targetWidth,
+            target_height: imageData.targetHeight,
+            keep_ratio: imageData.keepRatio
+        });
+    }
+}
+
+// Toggle keep ratio for specific image
+async function toggleKeepRatio(imageId, keepRatio) {
+    const imageData = selectedImages.find(img => img.id === imageId);
+    if (!imageData) return;
+    
+    imageData.keepRatio = keepRatio;
+    const heightInput = document.getElementById(`height-${imageId}`);
+    heightInput.disabled = keepRatio;
+    
+    if (keepRatio) {
+        // Recalculate height based on current width
+        const newHeight = Math.round(imageData.targetWidth / imageData.aspectRatio);
+        imageData.targetHeight = newHeight;
+        heightInput.value = newHeight;
+    }
+    
+    // Sync with server if this is a server image
+    if (imageData.serverData) {
+        await syncImageWithServer(imageId, {
+            target_width: imageData.targetWidth,
+            target_height: imageData.targetHeight,
+            keep_ratio: imageData.keepRatio
+        });
+    }
+}
+
+// Sync image changes with server
+async function syncImageWithServer(imageId, updateData) {
+    try {
+        const response = await fetch(`/api/images/${imageId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(updateData)
+        });
+        
+        const result = await response.json();
+        if (!result.success) {
+            console.error('Failed to sync image with server:', result.error);
+        }
+    } catch (error) {
+        console.error('Error syncing image with server:', error);
+    }
+}
+
+// Remove image from table and array
+async function removeImage(imageId) {
+    // Find the image to remove
+    const imageToRemove = selectedImages.find(img => img.id === imageId);
+    
+    // If it's a server image, delete from server
+    if (imageToRemove && imageToRemove.serverData) {
+        try {
+            const response = await fetch(`/api/images/${imageId}`, {
+                method: 'DELETE'
+            });
+            const result = await response.json();
+            if (!result.success) {
+                showStatus(`Error deleting image: ${result.error}`, 'error');
+                return;
+            }
+        } catch (error) {
+            showStatus(`Network error: ${error.message}`, 'error');
+            return;
+        }
+    }
+    
+    // Remove from array
+    selectedImages = selectedImages.filter(img => img.id !== imageId);
+    
+    // Remove table row
+    const row = document.getElementById(`image-row-${imageId}`);
+    if (row) {
+        row.remove();
+    }
+    
+    // Update UI
+    updateProcessButton();
+    
+    if (selectedImages.length === 0) {
+        hideImagesSection();
+        selectedFile = null; // Clear backward compatibility variable
+    } else {
+        selectedFile = selectedImages[0].file; // Keep first image for backward compatibility
+    }
+    
+    showStatus('Image removed from selection.', 'info');
+}
+
+// Browse directory functionality (placeholder)
+function browseDirectory() {
+    const directoryPath = document.getElementById('directoryPath').value.trim();
+    if (!directoryPath) {
+        showStatus('Please enter a directory path.', 'error');
+        return;
+    }
+
+    // Note: Directory browsing requires backend implementation for security
+    showStatus('Directory browsing requires backend implementation for security reasons. Please use the file upload instead.', 'info');
+    
+    // Show mock file list for demonstration
+    showMockFileList();
+}
+
+// Show mock file list (demonstration purposes)
+function showMockFileList() {
+    const fileBrowser = document.getElementById('fileBrowser');
+    const fileList = document.getElementById('fileList');
+    
+    const mockFiles = [
+        { name: 'sample1.jpg', size: '2.3 MB' },
+        { name: 'sample2.png', size: '1.8 MB' },
+        { name: 'sample3.gif', size: '4.1 MB' },
+        { name: 'photo.jpeg', size: '3.2 MB' }
+    ];
+
+    fileList.innerHTML = '';
+    mockFiles.forEach(file => {
+        const fileItem = document.createElement('div');
+        fileItem.className = 'file-item';
+        fileItem.innerHTML = `
+            <strong>${file.name}</strong>
+            <span class="text-muted" style="float: right;">${file.size}</span>
+        `;
+        fileItem.onclick = () => selectFileFromList(fileItem, file.name);
+        fileList.appendChild(fileItem);
+    });
+
+    fileBrowser.classList.remove('hidden');
+}
+
+// Select file from directory list
+function selectFileFromList(element, filename) {
+    // Remove previous selection
+    document.querySelectorAll('.file-item').forEach(item => {
+        item.classList.remove('selected');
+    });
+    
+    // Select current item
+    element.classList.add('selected');
+    
+    showStatus(`Note: File selection from directory requires backend implementation. Selected: ${filename}`, 'info');
+}
+
+// Process image with current parameters
+async function processImage() {
+    if (!selectedFile) {
+        showStatus('Please select an image first.', 'error');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+    formData.append('edge_thickness', document.getElementById('edgeThickness').value);
+    formData.append('color_levels', document.getElementById('colorLevels').value);
+    formData.append('smoothing_amount', document.getElementById('smoothingAmount').value);
+    
+    // Add resolution parameters
+    const targetWidth = document.getElementById('targetWidth').value;
+    const targetHeight = document.getElementById('targetHeight').value;
+    const keepRatio = document.getElementById('keepRatio').checked;
+    
+    if (targetWidth) {
+        formData.append('target_width', targetWidth);
+    }
+    if (targetHeight) {
+        formData.append('target_height', targetHeight);
+    }
+    formData.append('keep_ratio', keepRatio ? '1' : '0');
+
+    // Show processing status
+    showStatus('Processing image...', 'info');
+    showProgress(0);
+    document.getElementById('processBtn').disabled = true;
+
+    try {
+        // Simulate progress updates
+        const progressInterval = setInterval(() => {
+            const currentWidth = parseInt(document.getElementById('progressBar').style.width) || 0;
+            if (currentWidth < 90) {
+                showProgress(currentWidth + 10);
+            }
+        }, 200);
+
+        const response = await fetch('/upload', {
+            method: 'POST',
+            body: formData
+        });
+
+        clearInterval(progressInterval);
+        showProgress(100);
+
+        const result = await response.json();
+
+        if (result.success) {
+            showStatus('Image processed successfully!', 'success');
+            displayResults(result);
+        } else {
+            showStatus(`Error: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        showStatus(`Network error: ${error.message}`, 'error');
+        console.error('Processing error:', error);
+    } finally {
+        document.getElementById('processBtn').disabled = false;
+        setTimeout(() => {
+            document.getElementById('statusSection').classList.add('hidden');
+        }, 5000);
+    }
+}
+
+// Display processing results
+function displayResults(result) {
+    currentProcessedPath = result.processed_path;
+    
+    // Extract filename from path (handle both Windows and Unix path separators)
+    const filename = result.processed_path.split(/[/\\]/).pop();
+    
+    // Show processed image
+    document.getElementById('processedImage').src = `/uploads/${filename}`;
+    
+    // Show results section
+    document.getElementById('resultsSection').classList.remove('hidden');
+    document.getElementById('downloadBtn').style.display = 'inline-block';
+    
+    // Scroll to results smoothly
+    document.getElementById('resultsSection').scrollIntoView({
+        behavior: 'smooth',
+        block: 'start'
+    });
+}
+
+// Download processed image
+function downloadImage() {
+    if (currentProcessedPath && selectedFile) {
+        const filename = currentProcessedPath.split(/[/\\]/).pop();
+        const link = document.createElement('a');
+        link.href = `/uploads/${filename}`;
+        link.download = `cellshaded_${selectedFile.name}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        showStatus('Download started!', 'success');
+    }
+}
+
+// Show status message with auto-hide
+function showStatus(message, type) {
+    const statusSection = document.getElementById('statusSection');
+    const statusMessage = document.getElementById('statusMessage');
+    
+    statusMessage.textContent = message;
+    statusMessage.className = `status-message status-${type}`;
+    statusSection.classList.remove('hidden');
+    
+    // Auto-hide success and info messages
+    if (type === 'success' || type === 'info') {
+        setTimeout(() => {
+            statusSection.classList.add('hidden');
+        }, 4000);
+    }
+}
+
+// Show progress bar
+function showProgress(percentage) {
+    const progressBar = document.getElementById('progressBar');
+    progressBar.style.width = Math.min(100, Math.max(0, percentage)) + '%';
+}
+
+// Reset form to initial state
+function resetForm() {
+    // Clear selected images
+    selectedFile = null;
+    selectedImages = [];
+    currentProcessedPath = null;
+    imageIdCounter = 0;
+    
+    // Clear image table
+    document.getElementById('imageTableBody').innerHTML = '';
+    hideImagesSection();
+    
+    // Reset UI elements
+    document.getElementById('processBtn').disabled = true;
+    document.getElementById('resultsSection').classList.add('hidden');
+    document.getElementById('statusSection').classList.add('hidden');
+    document.getElementById('fileBrowser').classList.add('hidden');
+    document.getElementById('imageUpload').value = '';
+    document.getElementById('directoryPath').value = '';
+    document.getElementById('originalImage').src = '';
+    document.getElementById('processedImage').src = '';
+    showProgress(0);
+    resetResolutionControls();
+}
+
+// Utility function to format file size
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+// Utility function to validate image file
+function isValidImageFile(file) {
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/bmp', 'image/tiff'];
+    return allowedTypes.includes(file.type);
+}
+
+// Export functions for global access
+window.CellShader = {
+    processImage,
+    browseDirectory,
+    downloadImage,
+    resetForm,
+    handleFileSelection,
+    addImageToTable,
+    removeImage,
+    updateImageWidth,
+    updateImageHeight,
+    toggleKeepRatio
+};

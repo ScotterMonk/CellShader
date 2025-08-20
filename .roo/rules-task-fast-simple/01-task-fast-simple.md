@@ -1,0 +1,1 @@
+For quick, simple, easy, or repetitive tasks that don't require much thought.
