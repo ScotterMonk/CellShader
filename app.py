@@ -20,6 +20,7 @@ app.config['SECRET_KEY'] = 'cellshader-dev-key-change-in-production'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size.
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['METADATA_FILE'] = 'uploads/images_metadata.json'
+app.config['CONFIG_FILE'] = 'config.json'
 
 # Allowed file extensions for image uploads.
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'bmp', 'tiff'}
@@ -27,6 +28,42 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'bmp', 'tiff'}
 # Configure logging.
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Global config variable.
+app_config = {}
+
+def load_app_config():
+    """Load application configuration from config.json file."""
+    global app_config
+    try:
+        if os.path.exists(app.config['CONFIG_FILE']):
+            with open(app.config['CONFIG_FILE'], 'r', encoding='utf-8') as f:
+                app_config = json.load(f)
+                logger.info("Application configuration loaded successfully")
+        else:
+            # Default configuration if file doesn't exist.
+            app_config = {
+                'default_subdirectory': 'cell-shaded',
+                'default_prefix': '',
+                'default_edge_thickness': 7,
+                'default_color_levels': 8,
+                'default_smoothing': 7,
+                'default_colorful': 1.0
+            }
+            logger.warning("Config file not found, using default configuration")
+        return app_config
+    except Exception as e:
+        logger.error(f"Error loading configuration: {str(e)}")
+        # Return default configuration on error.
+        app_config = {
+            'default_subdirectory': 'cell-shaded',
+            'default_prefix': '',
+            'default_edge_thickness': 7,
+            'default_color_levels': 8,
+            'default_smoothing': 7,
+            'default_colorful': 1.0
+        }
+        return app_config
 
 def allowed_file(filename):
     """Check if uploaded file has allowed extension."""
@@ -106,18 +143,19 @@ def create_cell_shaded_folder(original_path):
     """Create cell-shaded subfolder in the same directory as the original image."""
     try:
         directory = os.path.dirname(original_path)
-        cell_shaded_folder = os.path.join(directory, 'cell-shaded')
+        subdirectory_name = app_config.get('default_subdirectory', 'cell-shaded')
+        cell_shaded_folder = os.path.join(directory, subdirectory_name)
         
         if not os.path.exists(cell_shaded_folder):
             os.makedirs(cell_shaded_folder)
-            logger.info(f"Created cell-shaded folder: {cell_shaded_folder}")
+            logger.info(f"Created {subdirectory_name} folder: {cell_shaded_folder}")
         
         return cell_shaded_folder
     except Exception as e:
         logger.error(f"Error creating cell-shaded folder: {str(e)}")
         raise
 
-def apply_cell_shading(image_path, edge_thickness=7, color_levels=8, smoothing_amount=7, saturation_amount=1.0, target_width=None, target_height=None, keep_ratio=True):
+def apply_cell_shading(image_path, edge_thickness=None, color_levels=None, smoothing_amount=None, saturation_amount=None, target_width=None, target_height=None, keep_ratio=True):
     """
     Apply cell-shading effect to an image using OpenCV.
     
@@ -135,6 +173,16 @@ def apply_cell_shading(image_path, edge_thickness=7, color_levels=8, smoothing_a
         numpy.ndarray: Processed image as numpy array
     """
     try:
+        # Use config defaults if parameters not provided.
+        if edge_thickness is None:
+            edge_thickness = app_config.get('default_edge_thickness', 7)
+        if color_levels is None:
+            color_levels = app_config.get('default_color_levels', 8)
+        if smoothing_amount is None:
+            smoothing_amount = app_config.get('default_smoothing', 7)
+        if saturation_amount is None:
+            saturation_amount = app_config.get('default_colorful', 1.0)
+        
         # Read the image.
         img = cv2.imread(image_path)
         if img is None:
@@ -243,9 +291,13 @@ def save_processed_image(processed_img, original_path, output_folder):
         original_filename = os.path.basename(original_path)
         name, ext = os.path.splitext(original_filename)
         
-        # Create output filename with timestamp.
+        # Create output filename with timestamp and prefix.
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_filename = f"{name}_cellshaded_{timestamp}{ext}"
+        prefix = app_config.get('default_prefix', '')
+        if prefix:
+            output_filename = f"{prefix}{name}_cellshaded_{timestamp}{ext}"
+        else:
+            output_filename = f"{name}_cellshaded_{timestamp}{ext}"
         output_path = os.path.join(output_folder, output_filename)
         
         # Save the processed image.
@@ -263,7 +315,7 @@ def save_processed_image(processed_img, original_path, output_folder):
 @app.route('/')
 def index():
     """Main page route - displays the image upload and processing interface."""
-    return render_template('index.html')
+    return render_template('index.html', config=app_config)
 
 @app.route('/api/images', methods=['GET'])
 def get_images():
@@ -385,11 +437,11 @@ def upload_file():
             flash('Invalid file type. Please upload PNG, JPG, JPEG, GIF, BMP, or TIFF files.')
             return redirect(request.url)
         
-        # Get processing parameters from form.
-        edge_thickness = int(request.form.get('edge_thickness', 7))
-        color_levels = int(request.form.get('color_levels', 8))
-        smoothing_amount = int(request.form.get('smoothing_amount', 7))
-        saturation_amount = float(request.form.get('saturation_amount', 1.0))
+        # Get processing parameters from form with config defaults.
+        edge_thickness = int(request.form.get('edge_thickness', app_config.get('default_edge_thickness', 7)))
+        color_levels = int(request.form.get('color_levels', app_config.get('default_color_levels', 8)))
+        smoothing_amount = int(request.form.get('smoothing_amount', app_config.get('default_smoothing', 7)))
+        saturation_amount = float(request.form.get('saturation_amount', app_config.get('default_colorful', 1.0)))
         
         # Get sizing parameters from form.
         target_width = request.form.get('target_width')
@@ -581,6 +633,9 @@ def file_too_large(error):
     }), 413
 
 if __name__ == '__main__':
+    # Load application configuration.
+    load_app_config()
+    
     # Create necessary directories.
     create_upload_folder()
     
