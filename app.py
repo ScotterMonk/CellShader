@@ -274,30 +274,26 @@ def apply_cell_shading(image_path, edge_thickness=None, color_levels=None, smoot
         logger.error(f"Error applying cell-shading: {str(e)}")
         raise
 
-def save_processed_image(processed_img, original_path, output_folder):
+def save_processed_image(processed_img, original_filename, output_folder):
     """
     Save the processed image to the output folder.
     
     Args:
         processed_img (numpy.ndarray): Processed image array
-        original_path (str): Path to original image
+        original_filename (str): Original filename of the image
         output_folder (str): Output folder path
     
     Returns:
         str: Path to saved processed image
     """
     try:
-        # Get original filename and extension.
-        original_filename = os.path.basename(original_path)
-        name, ext = os.path.splitext(original_filename)
-        
-        # Create output filename with timestamp and prefix.
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # Create output filename with prefix if specified.
         prefix = app_config.get('default_prefix', '')
         if prefix:
-            output_filename = f"{prefix}{name}_cellshaded_{timestamp}{ext}"
+            output_filename = f"{prefix}{original_filename}"
         else:
-            output_filename = f"{name}_cellshaded_{timestamp}{ext}"
+            output_filename = original_filename
+        
         output_path = os.path.join(output_folder, output_filename)
         
         # Save the processed image.
@@ -332,6 +328,33 @@ def get_images():
             'success': False,
             'error': str(e)
         }), 500
+
+@app.route('/api/config', methods=['GET'])
+def get_config():
+    """Get application configuration."""
+    return jsonify(app_config)
+
+@app.route('/api/config', methods=['PUT'])
+def update_config():
+    """Update application configuration."""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+
+        # Update app_config with new data.
+        for key, value in data.items():
+            app_config[key] = value
+        
+        # Save updated config to file.
+        with open(app.config['CONFIG_FILE'], 'w', encoding='utf-8') as f:
+            json.dump(app_config, f, indent=4)
+            
+        return jsonify({'success': True, 'message': 'Configuration updated successfully'})
+        
+    except Exception as e:
+        logger.error(f"Error updating configuration: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/images/<int:image_id>', methods=['DELETE'])
 def delete_image(image_id):
@@ -556,7 +579,7 @@ def upload_file():
         )
         
         # Save processed image.
-        output_path = save_processed_image(processed_img, file_path, output_folder)
+        output_path = save_processed_image(processed_img, file.filename, output_folder)
         
         # Return success response with dimension information.
         return jsonify({

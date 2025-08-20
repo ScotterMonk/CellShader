@@ -2,7 +2,7 @@
     "default_subdirectory": "cell-shaded",
     "default_prefix": "",
     "default_edge_thickness": 5,
-    "default_color_levels": 9,
+    "default_color_levels": 10,
     "default_smoothing": 8,
-    "default_colorful": 1.9
+    "default_colorful": 1.5
 }

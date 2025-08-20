@@ -15,29 +15,62 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeFileUpload();
     initializeResolutionControls();
     loadExistingImages();
+    loadConfig();
 });
+
+// Load configuration from server and update UI
+async function loadConfig() {
+    try {
+        const response = await fetch('/api/config');
+        const config = await response.json();
+
+        // Update Edge Thickness
+        const edgeSlider = document.getElementById('edgeThickness');
+        edgeSlider.value = config.default_edge_thickness;
+        document.getElementById('edgeValue').textContent = config.default_edge_thickness;
+
+        // Update Color Levels
+        const colorSlider = document.getElementById('colorLevels');
+        colorSlider.value = config.default_color_levels;
+        document.getElementById('colorValue').textContent = config.default_color_levels;
+
+        // Update Smoothing
+        const smoothingSlider = document.getElementById('smoothingAmount');
+        smoothingSlider.value = config.default_smoothing;
+        document.getElementById('smoothingValue').textContent = config.default_smoothing;
+
+        // Update Saturation
+        const saturationSlider = document.getElementById('saturationAmount');
+        const saturationValue = Math.round(config.default_colorful * 100);
+        saturationSlider.value = saturationValue;
+        document.getElementById('saturationValue').textContent = saturationValue;
+
+    } catch (error) {
+        console.error('Error loading configuration:', error);
+    }
+}
 
 // Initialize slider controls with real-time updates
 function initializeSliders() {
-    const edgeSlider = document.getElementById('edgeThickness');
-    const colorSlider = document.getElementById('colorLevels');
-    const smoothingSlider = document.getElementById('smoothingAmount');
-    const saturationSlider = document.getElementById('saturationAmount');
+    const sliders = [
+        { id: 'edgeThickness', valueId: 'edgeValue', configKey: 'default_edge_thickness' },
+        { id: 'colorLevels', valueId: 'colorValue', configKey: 'default_color_levels' },
+        { id: 'smoothingAmount', valueId: 'smoothingValue', configKey: 'default_smoothing' },
+        { id: 'saturationAmount', valueId: 'saturationValue', configKey: 'default_colorful', isPercentage: true }
+    ];
 
-    edgeSlider.addEventListener('input', function() {
-        document.getElementById('edgeValue').textContent = this.value;
-    });
+    sliders.forEach(sliderConfig => {
+        const slider = document.getElementById(sliderConfig.id);
+        const valueDisplay = document.getElementById(sliderConfig.valueId);
 
-    colorSlider.addEventListener('input', function() {
-        document.getElementById('colorValue').textContent = this.value;
-    });
+        slider.addEventListener('input', function() {
+            valueDisplay.textContent = this.value;
+        });
 
-    smoothingSlider.addEventListener('input', function() {
-        document.getElementById('smoothingValue').textContent = this.value;
-    });
-
-    saturationSlider.addEventListener('input', function() {
-        document.getElementById('saturationValue').textContent = this.value;
+        slider.addEventListener('change', function() {
+            let valueToSave = sliderConfig.isPercentage ? parseFloat(this.value) / 100.0 : parseInt(this.value);
+            saveConfig({ [sliderConfig.configKey]: valueToSave });
+        });
     });
 }
 
@@ -983,5 +1016,33 @@ window.CellShader = {
     removeAllImages,
     updateImageWidth,
     updateImageHeight,
-    toggleKeepRatio
+    toggleKeepRatio,
+    saveDefaultPrefix
 };
+
+// Save configuration to the server
+async function saveConfig(configData) {
+    try {
+        const response = await fetch('/api/config', {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(configData)
+        });
+        const result = await response.json();
+        if (result.success) {
+            showStatus('Configuration saved successfully!', 'success');
+        } else {
+            showStatus(`Error saving configuration: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        showStatus(`Network error: ${error.message}`, 'error');
+    }
+}
+
+// Save default prefix to server
+async function saveDefaultPrefix() {
+    const prefix = document.getElementById('defaultPrefix').value;
+    await saveConfig({ 'default_prefix': prefix });
+}

@@ -23,19 +23,25 @@ This document provides a concise, developer-focused description of the CellShade
 - Max upload size: 16 MB via `app.config['MAX_CONTENT_LENGTH']`.
 - Upload root: relative `uploads` directory via `app.config['UPLOAD_FOLDER']`.
 - Allowed extensions: `png`, `jpg`, `jpeg`, `gif`, `bmp`, `tiff` defined near `ALLOWED_EXTENSIONS`.
+- Application configuration is loaded from `config.json` at startup and can be updated in real-time from the front end.
 
 5) Dependencies.
-- Flask 2.3.3 for the web framework as listed in `requirements.txt`.
-- OpenCV 4.8.1.78 for image processing as listed in `requirements.txt`.
-- NumPy 1.24.3 as listed in `requirements.txt`.
-- Pillow 10.0.1 is present but not used by current logic as listed in `requirements.txt`.
-- Werkzeug 2.3.7 as an explicit dependency as listed in `requirements.txt`.
+- Flask for the web framework as listed in `requirements.txt`.
+- OpenCV for image processing as listed in `requirements.txt`.
+- NumPy as listed in `requirements.txt`.
+- Pillow is present but not used by current logic as listed in `requirements.txt`.
+- Werkzeug as an explicit dependency as listed in `requirements.txt`.
 
 6) Routes and HTTP APIs.
 - GET / handled by `index()`: returns the main page `templates/index.html`.
 - POST /upload handled by `upload_file()`: accepts `multipart/form-data` with fields `file`, `edge_thickness`, `color_levels`, and `smoothing_amount`, validates the upload in `allowed_file()` and parameter ranges in `upload_file()`, saves the original file with a timestamped name using `secure_filename()`, processes via `apply_cell_shading()`, writes the result in `save_processed_image()`, and returns JSON payload with `success`, `message`, `original_path`, `processed_path`, and `parameters` in `upload_file()`.
 - GET /uploads/<filename> handled by `uploaded_file()`: serves the original or processed image from `uploads/` or `uploads/cell-shaded/` and returns JSON 404 if not found in `uploaded_file()`.
 - GET /health handled by `health_check()`: returns a JSON health status including `version`.
+- GET /api/images handled by `get_images()`: returns all stored images metadata.
+- GET /api/config handled by `get_config()`: returns the application configuration.
+- PUT /api/config handled by `update_config()`: updates the application configuration.
+- DELETE /api/images/<int:image_id> handled by `delete_image()`: deletes an image and its metadata.
+- PUT /api/images/<int:image_id> handled by `update_image()`: updates image metadata.
 - Error handlers: 404 via `not_found_error()` returns `templates/404.html`, 500 via `internal_error()` returns `templates/500.html`, and 413 via `file_too_large()` returns a JSON error for oversized uploads.
 
 7) Image Processing Pipeline.
@@ -45,24 +51,25 @@ This document provides a concise, developer-focused description of the CellShade
 - Edge mask extraction: grayscale, median blur, adaptive threshold using `edge_thickness` as both block size and constant in `cv2.adaptiveThreshold()`.
 - Color quantization: K‑means to `color_levels` clusters with OpenCV criteria in `cv2.kmeans()`.
 - Composite cartoon effect: combine quantized image with edge mask using `cv2.bitwise_and()`.
-- Output persistence: generate timestamped filename and save via `save_processed_image()` and `cv2.imwrite()`.
+- Output persistence: generate filename with optional prefix and save via `save_processed_image()` and `cv2.imwrite()`.
 
 8) Frontend Overview.
 - Template: main UI in `templates/index.html` referencing `static/css/main.css` at `templates/index.html` and `static/js/main.js` at `templates/index.html`.
-- Core interactions in JavaScript: real‑time slider updates in `initializeSliders()`, drag‑and‑drop and file input handling in `initializeFileUpload()` and `handleFileSelection()`, POST processing workflow in `processImage()`, results rendering in `displayResults()`, downloading in `downloadImage()`, and user feedback via `showStatus()` and `showProgress()`.
-- Directory browsing UI is a placeholder that shows mock data and informs users that backend support is required in `browseDirectory()` and `showMockFileList()`.
+- Core interactions in JavaScript: real‑time slider updates, drag‑and‑drop and file input handling, POST processing workflow, results rendering, downloading, and user feedback.
+- Directory browsing UI is a placeholder that shows mock data and informs users that backend support is required.
 
 9) Files and Directories.
 - Application module at `app.py`.
 - Templates at `templates/index.html`, `templates/404.html`, and `templates/500.html`.
 - Static assets at `static/js/main.js` and `static/css/main.css`.
 - Upload storage at `uploads/` with processed images written under `uploads/cell-shaded/` created via `create_cell_shaded_folder()`.
+- Image metadata is stored in `uploads/images_metadata.json`.
 
 10) Security Considerations.
-- Input limits and validation: server enforces a 16 MB maximum in `MAX_CONTENT_LENGTH` and filters by file extension in `allowed_file()`, while the frontend also validates MIME types in `isValidImageFile()`.
-- Filenames: uploaded names are sanitized using `secure_filename()` and a timestamp prefix reduces collisions.
+- Input limits and validation: server enforces a 16 MB maximum in `MAX_CONTENT_LENGTH` and filters by file extension in `allowed_file()`.
+- Filenames: uploaded names are sanitized using `secure_filename()`.
 - Secrets and debug: a development secret key is hardcoded in `app.config['SECRET_KEY']` and debug mode is enabled in `app.run()`, both of which must be changed for production.
-- Information exposure: JSON responses include absolute or relative file system paths in `original_path` and `processed_path` in `upload_file()`, which may be sensitive in some deployments.
+- Information exposure: JSON responses include file system paths in `original_path` and `processed_path` in `upload_file()`, which may be sensitive in some deployments.
 - Authentication and authorization: none are implemented, so all endpoints are publicly accessible.
 - CSRF protection: not present because the app relies on simple form POSTs without session‑bound forms or tokens.
 
