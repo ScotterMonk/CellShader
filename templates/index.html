@@ -78,7 +78,7 @@
                 <h3 class="mb-0">Cell Shading Parameters</h3>
             </div>
             <div class="controls-section">
-                <div class="grid grid-3">
+                <div class="grid grid-4">
                     <div class="slider-container">
                         <label class="form-label">Edge Thickness: <span class="slider-value" id="edgeValue">7</span></label>
                         <input type="range" id="edgeThickness" class="slider" min="1" max="10" value="7">
@@ -92,6 +92,11 @@
                     <div class="slider-container">
                         <label class="form-label">Smoothing: <span class="slider-value" id="smoothingValue">7</span></label>
                         <input type="range" id="smoothingAmount" class="slider" min="1" max="15" value="7">
+                    </div>
+                    
+                    <div class="slider-container">
+                        <label class="form-label">Colorful: <span class="slider-value" id="saturationValue">100</span>%</label>
+                        <input type="range" id="saturationAmount" class="slider" min="0" max="200" value="100">
                     </div>
                 </div>
                 
@@ -173,7 +178,7 @@
             <ul>
                 <li>✓ Image upload and processing</li>
                 <li>✓ Cell shading effect application</li>
-                <li>✓ Adjustable parameters (edge thickness, color levels, smoothing)</li>
+                <li>✓ Adjustable parameters (edge thickness, color levels, smoothing, colorful)</li>
                 <li>✓ Real-time parameter preview</li>
                 <li>✓ Download processed images</li>
                 <li>✓ Local directory browsing</li>

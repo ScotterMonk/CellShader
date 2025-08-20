@@ -117,7 +117,7 @@ def create_cell_shaded_folder(original_path):
         logger.error(f"Error creating cell-shaded folder: {str(e)}")
         raise
 
-def apply_cell_shading(image_path, edge_thickness=7, color_levels=8, smoothing_amount=7, target_width=None, target_height=None, keep_ratio=True):
+def apply_cell_shading(image_path, edge_thickness=7, color_levels=8, smoothing_amount=7, saturation_amount=1.0, target_width=None, target_height=None, keep_ratio=True):
     """
     Apply cell-shading effect to an image using OpenCV.
     
@@ -126,6 +126,7 @@ def apply_cell_shading(image_path, edge_thickness=7, color_levels=8, smoothing_a
         edge_thickness (int): Thickness of edges (1-10)
         color_levels (int): Number of color levels (2-20)
         smoothing_amount (int): Amount of smoothing (1-15)
+        saturation_amount (float): Saturation multiplier (0.0-2.0, 1.0 = original)
         target_width (int, optional): Target width for resizing
         target_height (int, optional): Target height for resizing
         keep_ratio (bool): Whether to maintain aspect ratio when resizing
@@ -140,7 +141,7 @@ def apply_cell_shading(image_path, edge_thickness=7, color_levels=8, smoothing_a
             raise ValueError(f"Could not read image from {image_path}")
         
         logger.info(f"Processing image: {image_path}")
-        logger.info(f"Parameters - Edge thickness: {edge_thickness}, Color levels: {color_levels}, Smoothing: {smoothing_amount}")
+        logger.info(f"Parameters - Edge thickness: {edge_thickness}, Color levels: {color_levels}, Smoothing: {smoothing_amount}, Saturation: {saturation_amount}")
         
         # Apply custom resizing if target dimensions are provided.
         height, width = img.shape[:2]
@@ -176,10 +177,29 @@ def apply_cell_shading(image_path, edge_thickness=7, color_levels=8, smoothing_a
         # Apply bilateral filter for smoothing while preserving edges.
         smooth = cv2.bilateralFilter(img, smoothing_amount, 80, 80)
         
+        # Apply saturation adjustment if needed.
+        if saturation_amount != 1.0:
+            # Convert to HSV color space for saturation adjustment.
+            hsv = cv2.cvtColor(smooth, cv2.COLOR_BGR2HSV)
+            hsv = hsv.astype(np.float32)
+            
+            # Adjust saturation channel (index 1 in HSV).
+            hsv[:, :, 1] = hsv[:, :, 1] * saturation_amount
+            
+            # Clamp values to valid range and convert back to uint8.
+            hsv[:, :, 1] = np.clip(hsv[:, :, 1], 0, 255)
+            hsv = hsv.astype(np.uint8)
+            
+            # Convert back to BGR color space.
+            smooth = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+            logger.info(f"Applied saturation adjustment: {saturation_amount}")
+        
         # Create edge mask using adaptive threshold.
         gray = cv2.cvtColor(smooth, cv2.COLOR_BGR2GRAY)
         gray_blur = cv2.medianBlur(gray, 5)
-        edges = cv2.adaptiveThreshold(gray_blur, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, edge_thickness, edge_thickness)
+        # Ensure blockSize is odd and greater than 1 for adaptiveThreshold
+        block_size = edge_thickness if edge_thickness % 2 == 1 else edge_thickness + 1
+        edges = cv2.adaptiveThreshold(gray_blur, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, block_size, edge_thickness)
         
         # Convert edges to 3-channel.
         edges = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
@@ -369,6 +389,7 @@ def upload_file():
         edge_thickness = int(request.form.get('edge_thickness', 7))
         color_levels = int(request.form.get('color_levels', 8))
         smoothing_amount = int(request.form.get('smoothing_amount', 7))
+        saturation_amount = float(request.form.get('saturation_amount', 1.0))
         
         # Get sizing parameters from form.
         target_width = request.form.get('target_width')
@@ -400,6 +421,7 @@ def upload_file():
         edge_thickness = max(1, min(10, edge_thickness))
         color_levels = max(2, min(20, color_levels))
         smoothing_amount = max(1, min(15, smoothing_amount))
+        saturation_amount = max(0.0, min(2.0, saturation_amount))
         
         # Save uploaded file.
         filename = secure_filename(file.filename)
@@ -475,6 +497,7 @@ def upload_file():
             edge_thickness,
             color_levels,
             smoothing_amount,
+            saturation_amount,
             final_width if final_width != original_width else None,
             final_height if final_height != original_height else None,
             keep_ratio
@@ -495,6 +518,7 @@ def upload_file():
                 'edge_thickness': edge_thickness,
                 'color_levels': color_levels,
                 'smoothing_amount': smoothing_amount,
+                'saturation_amount': saturation_amount,
                 'target_width': target_width,
                 'target_height': target_height,
                 'keep_ratio': keep_ratio

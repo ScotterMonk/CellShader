@@ -22,6 +22,7 @@ function initializeSliders() {
     const edgeSlider = document.getElementById('edgeThickness');
     const colorSlider = document.getElementById('colorLevels');
     const smoothingSlider = document.getElementById('smoothingAmount');
+    const saturationSlider = document.getElementById('saturationAmount');
 
     edgeSlider.addEventListener('input', function() {
         document.getElementById('edgeValue').textContent = this.value;
@@ -33,6 +34,10 @@ function initializeSliders() {
 
     smoothingSlider.addEventListener('input', function() {
         document.getElementById('smoothingValue').textContent = this.value;
+    });
+
+    saturationSlider.addEventListener('input', function() {
+        document.getElementById('saturationValue').textContent = this.value;
     });
 }
 
@@ -608,6 +613,7 @@ async function processImage() {
     const edgeThickness = document.getElementById('edgeThickness').value;
     const colorLevels = document.getElementById('colorLevels').value;
     const smoothingAmount = document.getElementById('smoothingAmount').value;
+    const saturationAmount = document.getElementById('saturationAmount').value;
 
     // Show processing status
     showStatus(`Processing ${selectedImages.length} image(s)...`, 'info');
@@ -641,6 +647,7 @@ async function processImage() {
             formData.append('edge_thickness', edgeThickness);
             formData.append('color_levels', colorLevels);
             formData.append('smoothing_amount', smoothingAmount);
+            formData.append('saturation_amount', parseFloat(saturationAmount) / 100.0);
             
             // Add image-specific resolution parameters
             if (imageData.targetWidth && imageData.targetWidth !== imageData.originalWidth) {
